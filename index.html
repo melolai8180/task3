@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Color Test Experiment</title>
+<style>
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-size: 24px;
+    }
+    #colorText {
+        font-size: 120px;
+        font-weight: bold;
+    }
+
+    #star {
+        font-size: 120px;
+        display: none;
+    }
+</style>
+</head>
+<body>
+<div>
+    <p id="instructionText">Enter your participant ID and press Enter to start the experiment.</p>
+    <input type="text" id="participantIdInput" placeholder="Enter Participant ID" autofocus>
+    <input type="text" id="starCountInput" placeholder="Enter number here" style="display: none;" autofocus>
+
+    <h1 id="star">★</h1>
+    <div id="colorText"></div>
+    <!-- Audio elements -->
+    <div id="audio-container">
+
+    </div>
+</div>
+<script>
+    const totalTrials = 100;
+    const REST_TIME = 60;
+    const practiceTrials = 20;
+    let currentTrial = 0;
+
+    let isExperimentRunning = false;
+    let isTransition = false;
+    let participantId = null;
+    let startTime, endTime; // Track response time
+    let experimentData = []; // Array to store trial data
+    let blockStarCounts = [getRandomIntInclusive(5, 7), getRandomIntInclusive(5, 7), getRandomIntInclusive(15, 17), getRandomIntInclusive(15, 17)];
+    shuffleArray(blockStarCounts);
+
+    let samples;
+
+
+	document.addEventListener('DOMContentLoaded', function() {
+
+        const audioContainer = document.getElementById('audio-container');
+        for (let i = 1; i <= 99; i++) {
+            const audio = document.createElement('audio');
+            audio.id = `audio-${i}`
+            audio.src = `task2_wav_audio/${i}.wav`;
+            audio.preload = 'auto'; // This attribute is used to suggest that the browser should preload the audio
+            audioContainer.appendChild(audio);
+        }
+
+	    const participantInput = document.getElementById('participantIdInput');
+	    participantInput.addEventListener('keypress', function(event) {
+	        if (event.key === "Enter" && participantInput.value.trim() !== "") {
+	            participantId = participantInput.value.trim(); // Store the participant ID
+	            participantInput.style.display = 'none'; // Hide input field
+	            document.getElementById('instructionText').textContent = 'Press the spacebar to start the experiment.';
+	            isExperimentRunning = true;
+	            notifyTransition(); // Notify to start the practice
+	            event.preventDefault();
+	        }
+	    });
+	});
+
+
+    function startCountdown(duration, display) {
+        let timer = duration, minutes, seconds;
+        let countdownInterval = setInterval(function () {
+            minutes = parseInt(timer / 60, 10);
+            seconds = parseInt(timer % 60, 10);
+
+            minutes = minutes < 10 ? "0" + minutes : minutes;
+            seconds = seconds < 10 ? "0" + seconds : seconds;
+
+            display.textContent = 'Continuing in ' + minutes + ":" + seconds;
+
+            if (--timer < 0) {
+                isExperimentRunning = true;
+                clearInterval(countdownInterval);
+                display.textContent = '';
+                notifyTransition();
+            }
+        }, 1000);
+    }
+
+    // Add this outside of any function, at the end of the script block
+    document.getElementById('starCountInput').addEventListener('keypress', function(event) {
+        if (event.key === "Enter" && this.value.trim() !== "") {
+            let starsEntered = parseInt(this.value.trim());
+
+            const lastTrial = experimentData[currentTrial - 1];
+            lastTrial.block = Math.floor(currentTrial / 20) - 1;
+            const actualStarCounts = blockStarCounts[lastTrial.block - 1]
+            lastTrial.actualStarCounts = actualStarCounts;
+            lastTrial.starsEntered = starsEntered;
+            lastTrial.starCorrectness = (actualStarCounts === starsEntered);
+            console.log(experimentData);
+            this.style.display = 'none';
+            this.value = ''; // Reset input field
+            if (currentTrial === totalTrials) {
+                endExperiment();
+            }
+            else {
+                startCountdown(REST_TIME, document.getElementById('instructionText'));
+            }
+            // count down
+            event.preventDefault();
+        }
+    });
+
+	document.addEventListener('keydown', function(event) {
+		if (!isExperimentRunning) {
+			return;
+		}
+	    if (event.code === 'Space' && isTransition) {
+            continueExperiment();
+	        event.preventDefault();
+	    } else if (!isTransition && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+	        endTime = performance.now(); // Mark response time
+	        handleResponse(event.key);
+	    }
+	});
+
+
+    function getRandomIntInclusive(min, max) {
+      const minCeiled = Math.ceil(min);
+      const maxFloored = Math.floor(max);
+      return Math.floor(Math.random() * (maxFloored - minCeiled + 1) + minCeiled); // The maximum is inclusive and the minimum is inclusive
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    function generateTestSample(numStars) {
+        // Generating an array of numbers from 1 to 99
+        const allNumbers = Array.from({ length: 99 }, (_, i) => i + 1);
+
+        shuffleArray(allNumbers);
+
+        // Selecting the first 20 elements from the shuffled array
+        const selectedNumbers = allNumbers.slice(0, 20);
+
+        // Function to get a random sample of 'k' elements from an array
+        function getRandomSample(array, k) {
+            const result = new Set();
+            while (result.size < k) {
+                const randomIndex = Math.floor(Math.random() * array.length);
+                result.add(array[randomIndex]);
+            }
+            return result;
+        }
+
+        // Getting a random sample of 10 numbers from the selectedNumbers for matching trials
+        const matchingTrials = getRandomSample(selectedNumbers, 10);
+        const trialsWithStar = getRandomSample(selectedNumbers, numStars);
+        const nonmatchingTrials = new Set(selectedNumbers.filter(x => !matchingTrials.has(x)));
+
+        // Calculating the complement set
+        const complementSet = allNumbers.filter(x => !nonmatchingTrials.has(x));
+
+        // Shuffling the complement set
+        shuffleArray(complementSet);
+        complementSet.splice(10, complementSet.length - 10); // Keeping only the first 10 elements
+
+        // Creating samples based on whether numbers are in matching trials or not
+        let k = 0;
+        const samples = [];
+        selectedNumbers.forEach(num => {
+            let soundNumber;
+            if (matchingTrials.has(num)) {
+                soundNumber = num;
+            } else {
+                soundNumber = complementSet[k++];
+            }
+            samples.push({
+                text: num,
+                sound: soundNumber,
+                star: trialsWithStar.has(num)
+            });
+        });
+
+        return samples;
+    }
+
+
+	function continueExperiment() {
+        document.getElementById('instructionText').textContent = '';
+        isTransition = false;
+        nextTrial();
+	}
+
+	function nextTrial() {
+	    if (currentTrial < totalTrials) {
+	    	currentTrial++;
+            console.log(currentTrial);
+            if (currentTrial % 20 == 1) {
+                const blockNum = Math.floor(currentTrial / 20);
+                if (blockNum == 0) {
+                    // no stars in practice
+                    samples = generateTestSample(0);
+                }
+                else if (blockNum > 0) {
+                    samples = generateTestSample(blockStarCounts[blockNum - 1]);
+                }
+            }
+
+	        playSample();
+	    } else {
+	        endExperiment();
+	    }
+	}
+
+    function numberOfStarsQuestion() {
+
+        isExperimentRunning = false;
+
+        document.getElementById('colorText').textContent = '';
+
+
+        document.getElementById('instructionText').innerHTML = '<p>How many times the star appeared ? After the input, take the 1-min rest.</p>';
+        document.getElementById('starCountInput').style.display = 'block';
+        document.getElementById('starCountInput').focus();
+
+        isTransition = true;
+    }
+
+    function notifyTransition() {
+        document.getElementById('colorText').textContent = '';
+
+        if (currentTrial == 0) {
+        	document.getElementById('instructionText').innerHTML = '<p>This is the start of the practice trial. </p><p>You will see a number presented on screen, at the same time, you will hear a sound of a number. </p><br><p>Press left arrow key if the number and sound match</p><p>press right arrow key if the number and sound do not match.</p><br><p>Press space to continue.</p>';
+        }
+        else if (currentTrial == 20) {
+        	document.getElementById('instructionText').innerHTML = '<p>This is the end of practice. </p><br><p>Now, you will see a star appearing randomly when you do the matching task. </p><br><p>You will have four blocks, each with 20 trials. </p><p>A one minute rest will be given in between blocks. </p><br><p>At the end of each block, you need to type out how many times the star appeared. </p><p>Press space to start the experiment block 1.</p>';
+        }
+        else if (currentTrial == 40) {
+            document.getElementById('instructionText').innerHTML = 'Press space to start block 2';
+        }
+        else if (currentTrial == 60) {
+            document.getElementById('instructionText').innerHTML = 'Press space to start block 3';
+        }
+        else if (currentTrial == 80) {
+            document.getElementById('instructionText').innerHTML = 'Press space to start block 4';
+        }
+        isTransition = true;
+    }
+
+    function endExperiment() {
+        document.getElementById('colorText').textContent = '';
+        document.getElementById('instructionText').textContent = 'You finished the task! Thank you! You can close this page to exit';
+        isExperimentRunning = false;
+        console.log(experimentData); // Display collected data in console
+
+        fetch('https://sheet.best/api/sheets/1ab3a1fc-4df3-48f1-9f29-4dca0ec29b90', {
+            method: 'POST', // Set method to POST
+            headers: {
+                'Content-Type': 'application/json' // Set content type to JSON
+            },
+            body: JSON.stringify(experimentData) // Convert the JavaScript object to a JSON string
+        })
+        .then(response => response.json()) // Parsing the JSON response
+        .then(data => {
+            console.log('Success:', data); // Handle success
+        })
+        .catch((error) => {
+            console.error('Error:', error); // Handle errors
+        });
+    }
+
+    function playSample() {
+        // if star = true, display the star first and then display the text
+        const sample = samples[(currentTrial - 1) % 20];
+
+        if (sample.star) {
+            isExperimentRunning = false;
+            const element = document.getElementById('star');
+
+            // Show the element
+            document.getElementById('colorText').style.display = 'none';
+            element.style.display = 'block';
+
+            setTimeout(function() {
+                element.style.display = 'none';
+                document.getElementById('colorText').style.display = 'block';
+
+
+                document.getElementById('colorText').textContent = sample.text;
+                playSound(sample.sound);
+                isExperimentRunning = true;
+                startTime = performance.now();
+
+
+            }, 500);
+        }
+        else {
+            isExperimentRunning = false;
+            document.getElementById('colorText').textContent = sample.text;
+            playSound(sample.sound);
+            isExperimentRunning = true;
+            startTime = performance.now();
+        }
+
+
+        experimentData.push({ 
+            participantId, 
+            currentTrial, 
+            text: sample.text, 
+            sound: sample.sound, 
+            star: sample.star,
+            response: null, 
+            responseTimeMs: null, 
+            correctness: null, 
+            trialType: currentTrial <= practiceTrials ? 'practice' : 'experimental' 
+        });
+    }
+
+    function playSound(number) {
+        const sound = document.getElementById(`audio-${number}`);
+        sound.currentTime = 0; // Reset playback position to start
+        sound.play();
+    }
+
+	function handleResponse(key) {
+        const trial = experimentData[currentTrial - 1];
+        trial.response = key;
+        // Calculate response time in milliseconds
+        trial.responseTimeMs = endTime - startTime;
+        // Evaluate correctness
+        trial.correctness = (trial.text === trial.sound && key === 'ArrowLeft' || trial.text !== trial.sound && key === 'ArrowRight'); 
+        if (currentTrial == practiceTrials) {
+            notifyTransition();
+            return;
+        }
+        else if (currentTrial % 20 == 0) {
+            numberOfStarsQuestion();
+            return; // Return here prevents incrementing currentTrial prematurely
+        }
+        nextTrial();
+	}
+</script>
+</body>
+</html>
